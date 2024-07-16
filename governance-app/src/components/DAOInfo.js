@@ -2,8 +2,9 @@
 import React from 'react';
 import { Card, CardContent, Typography } from '@mui/material';
 
+// DAOInfo Component
 const DAOInfo = ({ daoInfo }) => {
-  if (!daoInfo) return null;
+  if (!daoInfo || !daoInfo.info) return null;
 
   return (
     <Card>
@@ -12,14 +13,15 @@ const DAOInfo = ({ daoInfo }) => {
           DAO Information
         </Typography>
         <Typography variant="body2">
-          Contract: {daoInfo.info?.contract || 'N/A'}
+          Contract: {daoInfo.info.contract || 'N/A'}
         </Typography>
         <Typography variant="body2">
-          Version: {daoInfo.info?.version || 'N/A'}
+          Version: {daoInfo.info.version || 'N/A'}
         </Typography>
       </CardContent>
     </Card>
   );
 };
+
 
 export default DAOInfo;

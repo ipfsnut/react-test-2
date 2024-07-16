@@ -1,15 +1,16 @@
 // src/pages/DAODashboard.js
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Grid, 
-  Typography, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  Card, 
-  CardContent 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Container,
+  Grid,
+  Typography,
+  List,
+  ListItem,
+  ListItemText,
+  Card,
+  CardContent,
+  Button
 } from '@mui/material';
 import { fetchDAOData, fetchVotingPower } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -24,7 +25,7 @@ const formatLargeNumber = (num) => {
 
 // DAOInfo Component
 const DAOInfo = ({ daoInfo }) => {
-  if (!daoInfo) return null;
+  if (!daoInfo || !daoInfo.info) return null;
 
   return (
     <Card>
@@ -33,10 +34,10 @@ const DAOInfo = ({ daoInfo }) => {
           DAO Information
         </Typography>
         <Typography variant="body2">
-          Contract: {daoInfo.info?.contract || 'N/A'}
+          Contract: {daoInfo.info.contract || 'N/A'}
         </Typography>
         <Typography variant="body2">
-          Version: {daoInfo.info?.version || 'N/A'}
+          Version: {daoInfo.info.version || 'N/A'}
         </Typography>
       </CardContent>
     </Card>
@@ -65,8 +66,8 @@ const VotingPower = ({ votingPower }) => {
 };
 
 // Loading Component
-const Loading = () => (
-  <Typography variant="h5" align="center">Loading...</Typography>
+const Loading = ({ message }) => (
+  <Typography variant="h5" align="center">{message || 'Loading...'}</Typography>
 );
 
 // ErrorMessage Component
@@ -82,79 +83,111 @@ const DAODashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { user } = useAuth();
+  const mountedRef = useRef(true);
+  const fetchAttempts = useRef(0);
+
+  const fetchData = async () => {
+    console.log("fetchData called", user, "Attempt:", fetchAttempts.current);
+    fetchAttempts.current += 1;
+
+    if (fetchAttempts.current > 5) {
+      console.log("Max fetch attempts reached. Stopping.");
+      setError('Max fetch attempts reached. Please refresh the page.');
+      setLoading(false);
+      return;
+    }
+
+    if (!user || !user.address) {
+      console.log("No user address available");
+      setError('User address not available');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log("Fetching data...");
+      const [daoData, votingPowerData] = await Promise.all([
+        fetchDAOData(user.address),
+        fetchVotingPower(user.address, process.env.REACT_APP_PAGE_DAO_CONTRACT)
+      ]);
+
+      console.log("DAO Data:", daoData);
+      console.log("Voting Power Data:", votingPowerData);
+
+      if (!mountedRef.current) return;
+
+      // Update state with fetched data
+      setDaoInfo(daoData.data.daoInfo);
+      setSubDAOs(daoData.data.subDAOs);
+      setVotingPower(votingPowerData.data.votingPower);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      if (mountedRef.current) {
+        setError(err.message || 'Failed to fetch data');
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const fetchData = async () => {
-      if (!user || !user.address) {
-        setError('User address not available');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const [daoData, votingPowerData] = await Promise.all([
-          fetchDAOData(user.address),
-          fetchVotingPower(user.address, process.env.REACT_APP_PAGE_DAO_CONTRACT)
-        ]);
-
-        if (isMounted) {
-          setDaoInfo(daoData.data.daoInfo || null);
-          setSubDAOs(daoData.data.subDAOs || []);
-          setVotingPower(votingPowerData.data.votingPower || null);
-        }
-      } catch (err) {
-        console.error('Error fetching DAO data:', err);
-        if (isMounted) setError(err.message || 'Failed to fetch DAO data');
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
+    console.log("useEffect running");
     fetchData();
 
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
     };
-  }, [user]);
+  }, [user?.address]);
 
-  if (loading) return <Loading />;
+  console.log("Rendering. Loading:", loading, "Error:", error, "DAO Info:", daoInfo, "Voting Power:", votingPower);
+
+  if (loading) return <Loading message={`Loading... User: ${user?.address || 'No user'}`} />;
   if (error) return <ErrorMessage message={error} />;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Typography variant="h4" gutterBottom>DAO Dashboard</Typography>
+      <Button
+        onClick={fetchData}
+        variant="contained"
+        color="primary"
+        sx={{ mb: 2 }}
+      >
+        Refresh Data
+      </Button>
       <Grid container spacing={3}>
-        {daoInfo && (
-          <Grid item xs={12}>
-            <DAOInfo daoInfo={daoInfo} />
-          </Grid>
-        )}
-        {votingPower && (
-          <Grid item xs={12} md={6}>
-            <VotingPower votingPower={votingPower} />
-          </Grid>
-        )}
-        {subDAOs.length > 0 && (
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h5" gutterBottom>Sub-DAOs</Typography>
+        <Grid item xs={12}>
+          <DAOInfo daoInfo={daoInfo} />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <VotingPower votingPower={votingPower} />
+        </Grid>
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h5" gutterBottom>Sub-DAOs</Typography>
+              {subDAOs.length > 0 ? (
                 <List>
                   {subDAOs.map((subDAO, index) => (
                     <ListItem key={index}>
-                      <ListItemText 
-                        primary={subDAO.addr} 
-                        secondary={subDAO.charter || 'No charter'} 
+                      <ListItemText
+                        primary={subDAO.addr || 'N/A'}
+                        secondary={subDAO.charter || 'No charter'}
                       />
                     </ListItem>
                   ))}
                 </List>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
+              ) : (
+                <Typography variant="body2">No sub-DAOs found.</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
     </Container>
   );
